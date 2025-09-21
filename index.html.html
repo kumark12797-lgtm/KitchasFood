@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Outlet Menu — Day-wise Shopping</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 8px 20px rgba(15,23,42,0.06); }
+        .accordion-button[aria-expanded="true"] { background-color: #ecfdf5; }
+        .ingredient-input { min-width: 140px; }
+        .modal { display: none; position: fixed; z-index: 1000; inset: 0; background-color: rgba(0,0,0,0.35); align-items:center; justify-content:center; }
+    </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-6">
+
+    <!-- Modal -->
+    <div id="messageModal" class="modal">
+        <div class="card p-6 w-full max-w-md">
+            <p id="modalMessage" class="text-gray-800 font-semibold"></p>
+            <div class="mt-4 text-right">
+                <button class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600" onclick="hideModal()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="w-full max-w-3xl">
+        <div class="card p-6 mb-6">
+            <h1 class="text-3xl font-bold text-emerald-600 mb-2">Outlet Menu — Daywise Shopping</h1>
+            <p class="text-sm text-gray-500 mb-4">Select one day at a time. Enter custom quantities for each ingredient, then Generate the day's shopping list.</p>
+
+            <!-- Day Selector -->
+            <div class="flex gap-2 items-center mb-4">
+                <label class="text-sm font-medium text-gray-700">Choose day:</label>
+                <select id="daySelect" class="ml-2 px-3 py-2 border rounded-lg shadow-sm" onchange="onDayChange()"></select>
+                <label class="text-sm font-medium text-gray-700 ml-4">Type:</label>
+                <select id="typeSelect" class="ml-2 px-3 py-2 border rounded-lg shadow-sm" onchange="onTypeChange()">
+                    <option value="Vegetable">Vegetable</option>
+                    <option value="Grocery">Grocery</option>
+                </select>
+                <div class="ml-auto flex gap-2">
+                    <button onclick="generateList()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Generate List</button>
+                    <button onclick="resetDayInputs()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Reset Day</button>
+                </div>
+            </div>
+
+            <!-- Menu area (accordion) -->
+            <div id="menuArea" class="space-y-3"></div>
+        </div>
+
+        <!-- Output and send -->
+        <div class="card p-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-3">Selected List (WhatsApp ready)</h2>
+            <textarea id="outputList" readonly class="w-full h-44 p-3 rounded-lg bg-gray-50 border border-dashed border-gray-200 resize-none text-gray-800" placeholder="Generated shopping list will appear here."></textarea>
+            <div class="mt-3 flex gap-2">
+                <button onclick="sendList()" class="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Send via WhatsApp</button>
+                <button onclick="copyOutput()" class="py-2 px-4 bg-gray-200 rounded-lg hover:bg-gray-300">Copy</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/* =========================
+   MENU_LIST (hard-coded)
+   Each day has an array of dishes
+   Each dish has a name and ingredients array:
+     { id: 'toor_dal', name: 'Toor dal' }
+   You will type quantities manually next to each ingredient.
+   ========================= */
+
+const MENU_LIST = {
+    Monday: [
+        {
+            dish: "Sambar",
+            ingredients: [
+                { id: "toor_dal", name: "Toor dal" },
+                { id: "tamarind", name: "Tamarind" },
+                { id: "sambar_powder", name: "Sambar powder" },
+                { id: "onion", name: "Onion" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "dried_red_chili", name: "Dried red chili" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rasam",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "rasam_powder", name: "Rasam powder" },
+                { id: "garlic", name: "Garlic" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "coriander_leaves", name: "Coriander leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Kolambu (Kuzhambu)",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "kulambu_podi", name: "Kulambu podi/spices" },
+                { id: "onion", name: "Onion" },
+                { id: "garlic", name: "Garlic" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "fenugreek", name: "Fenugreek" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Poriyal",
+            ingredients: [
+                { id: "coconut", name: "Coconut" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "urad_dal", name: "Urad dal" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Egg thokku",
+            ingredients: [
+                { id: "egg", name: "Egg" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "coriander_powder", name: "Coriander powder" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Chutney",
+            ingredients: [
+                { id: "coconut_onion_tomato", name: "Coconut / onion / tomato" },
+                { id: "green_red_chili", name: "Green chili/red chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Curd rice",
+            ingredients: [
+                { id: "rice", name: "Rice" },
+                { id: "curd", name: "Curd" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "coriander", name: "Coriander" },
+                { id: "ginger", name: "Ginger" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Lemon rice",
+            ingredients: [
+                { id: "rice", name: "Rice" },
+                { id: "lemon", name: "Lemon" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "ginger", name: "Ginger" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "salt", name: "Salt" },
+                { id: "oil", name: "Oil" }
+            ]
+        }
+    ],
+    Tuesday: [
+        {
+            dish: "Chicken biryani",
+            ingredients: [
+                { id: "chicken", name: "Chicken" },
+                { id: "basmati_rice", name: "Basmati rice" },
+                { id: "onion", name: "Onion" },
+                { id: "curd", name: "Curd" },
+                { id: "mint", name: "Mint" },
+                { id: "coriander", name: "Coriander" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "biryani_masala", name: "Biryani masala/spices" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Raita",
+            ingredients: [
+                { id: "curd", name: "Curd" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "coriander", name: "Coriander" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Sambar",
+            ingredients: [
+                { id: "toor_dal", name: "Toor dal" },
+                { id: "tamarind", name: "Tamarind" },
+                { id: "sambar_powder", name: "Sambar powder" },
+                { id: "onion", name: "Onion" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "dried_red_chili", name: "Dried red chili" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Poriyal",
+            ingredients: [
+                { id: "coconut", name: "Coconut" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "urad_dal", name: "Urad dal" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Kolambu",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "kulambu_podi", name: "Kulambu podi" },
+                { id: "onion", name: "Onion" },
+                { id: "garlic", name: "Garlic" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "fenugreek", name: "Fenugreek" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rasam",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "rasam_powder", name: "Rasam powder" },
+                { id: "garlic", name: "Garlic" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "coriander_leaves", name: "Coriander leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Chutney",
+            ingredients: [
+                { id: "coconut_onion_tomato", name: "Coconut / onion / tomato" },
+                { id: "green_red_chili", name: "Green chili/red chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rice",
+            ingredients: [
+                { id: "rice", name: "Rice" },
+                { id: "salt", name: "Salt" }
+            ]
+        }
+    ],
+    Wednesday: [
+        {
+            dish: "Fish fry",
+            ingredients: [
+                { id: "fish", name: "Fish" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "lemon", name: "Lemon" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Sambar",
+            ingredients: [
+                { id: "toor_dal", name: "Toor dal" },
+                { id: "tamarind", name: "Tamarind" },
+                { id: "sambar_powder", name: "Sambar powder" },
+                { id: "onion", name: "Onion" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "dried_red_chili", name: "Dried red chili" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rasam",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "rasam_powder", name: "Rasam powder" },
+                { id: "garlic", name: "Garlic" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "coriander_leaves", name: "Coriander leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Kolambu",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "kulambu_podi", name: "Kulambu podi" },
+                { id: "onion", name: "Onion" },
+                { id: "garlic", name: "Garlic" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "fenugreek", name: "Fenugreek" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Poriyal",
+            ingredients: [
+                { id: "coconut", name: "Coconut" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "urad_dal", name: "Urad dal" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Egg thokku",
+            ingredients: [
+                { id: "egg", name: "Egg" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "coriander_powder", name: "Coriander powder" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Chutney",
+            ingredients: [
+                { id: "coconut_onion_tomato", name: "Coconut / onion / tomato" },
+                { id: "green_red_chili", name: "Green chili/red chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Curd rice",
+            ingredients: [
+                { id: "rice", name: "Rice" },
+                { id: "curd", name: "Curd" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "coriander", name: "Coriander" },
+                { id: "ginger", name: "Ginger" },
+                { id: "salt", name: "Salt" }
+            ]
+        }
+    ],
+    Thursday: [
+        {
+            dish: "Sambar keera",
+            ingredients: [
+                { id: "toor_dal", name: "Toor dal" },
+                { id: "tamarind", name: "Tamarind" },
+                { id: "sambar_powder", name: "Sambar powder" },
+                { id: "onion", name: "Onion" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rasam",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "rasam_powder", name: "Rasam powder" },
+                { id: "garlic", name: "Garlic" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "coriander_leaves", name: "Coriander leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "More (Mor Kuzhambu)",
+            ingredients: [
+                { id: "curd", name: "Curd" },
+                { id: "coconut", name: "Coconut" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Vendakai kara kolambu",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "onion", name: "Onion" },
+                { id: "kulambu_powder", name: "Kulambu powder" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Pavakka poriyal",
+            ingredients: [
+                { id: "onion", name: "Onion" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "coconut", name: "Coconut" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Pepper chicken",
+            ingredients: [
+                { id: "chicken", name: "Chicken" },
+                { id: "onion", name: "Onion" },
+                { id: "pepper", name: "Pepper" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Cauliflower biryani",
+            ingredients: [
+                { id: "basmati_rice", name: "Basmati rice" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "mint", name: "Mint" },
+                { id: "coriander", name: "Coriander" },
+                { id: "biryani_masala", name: "Biryani masala/spices" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Egg thokku",
+            ingredients: [
+                { id: "egg", name: "Egg" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "coriander_powder", name: "Coriander powder" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        }
+    ],
+    Friday: [
+        {
+            dish: "Papa dal",
+            ingredients: [
+                { id: "toor_moong_dal", name: "Toor dal / moong dal" },
+                { id: "onion", name: "Onion" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "cumin", name: "Cumin" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Rasam",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "rasam_powder", name: "Rasam powder" },
+                { id: "garlic", name: "Garlic" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard seeds" },
+                { id: "coriander_leaves", name: "Coriander leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "More (Mor Kuzhambu)",
+            ingredients: [
+                { id: "curd", name: "Curd" },
+                { id: "coconut", name: "Coconut" },
+                { id: "green_chili", name: "Green chili" },
+                { id: "cumin", name: "Cumin" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "turmeric", name: "Turmeric" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Murungakkai kolambu",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "onion", name: "Onion" },
+                { id: "kulambu_spices", name: "Kulambu spices" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "fenugreek", name: "Fenugreek" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Pacha pasalai kolambu",
+            ingredients: [
+                { id: "tamarind", name: "Tamarind" },
+                { id: "kulambu_spices", name: "Kulambu spices" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "mustard_seeds", name: "Mustard" },
+                { id: "fenugreek", name: "Fenugreek" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Mushroom biryani",
+            ingredients: [
+                { id: "basmati_rice", name: "Basmati rice" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "mint", name: "Mint" },
+                { id: "coriander", name: "Coriander" },
+                { id: "biryani_masala", name: "Biryani masala/spices" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Chettinad chicken",
+            ingredients: [
+                { id: "chicken", name: "Chicken" },
+                { id: "onion", name: "Onion" },
+                { id: "coconut", name: "Coconut" },
+                { id: "fennel", name: "Fennel" },
+                { id: "cinnamon", name: "Cinnamon" },
+                { id: "pepper", name: "Pepper" },
+                { id: "cloves", name: "Cloves" },
+                { id: "curry_leaves", name: "Curry leaves" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        },
+        {
+            dish: "Egg thokku",
+            ingredients: [
+                { id: "egg", name: "Egg" },
+                { id: "onion", name: "Onion" },
+                { id: "ginger_garlic_paste", name: "Ginger-garlic paste" },
+                { id: "chili_powder", name: "Chili powder" },
+                { id: "coriander_powder", name: "Coriander powder" },
+                { id: "oil", name: "Oil" },
+                { id: "salt", name: "Salt" }
+            ]
+        }
+    ]
+};
+
+/* =========================
+   DAY_ITEMS (hard-coded)
+   Each day has an array of items for Vegetable or Grocery
+   You will type quantities manually next to each item.
+   ========================= */
+
+const DAY_ITEMS = {
+    Monday: {
+        Vegetable: [
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "coconut", name: "Coconut (नारियल)" },
+            { id: "tomato", name: "Tomato (टमाटर)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger", name: "Ginger (अदरक)" },
+            { id: "lemon", name: "Lemon (नींबू)" }
+        ],
+        Grocery: [
+            { id: "toor_dal", name: "Toor dal (अरहर दाल)" },
+            { id: "tamarind", name: "Tamarind (इमली)" },
+            { id: "sambar_powder", name: "Sambar powder (सांभर पाउडर)" },
+            { id: "mustard_seeds", name: "Mustard seeds (सरसों के दाने)" },
+            { id: "dried_red_chili", name: "Dried red chili (सूखी लाल मिर्च)" },
+            { id: "turmeric", name: "Turmeric (हल्दी)" },
+            { id: "oil", name: "Oil (तेल)" },
+            { id: "salt", name: "Salt (नमक)" },
+            { id: "rasam_powder", name: "Rasam powder (रसम पाउडर)" },
+            { id: "garlic", name: "Garlic (लहसुन)" },
+            { id: "pepper", name: "Pepper (काली मिर्च)" },
+            { id: "cumin", name: "Cumin (जीरा)" },
+            { id: "kulambu_podi", name: "Kulambu podi/spices (कुलम्बू मसाला)" },
+            { id: "fenugreek", name: "Fenugreek (मेथी दाना)" },
+            { id: "urad_dal", name: "Urad dal (उड़द दाल)" },
+            { id: "egg", name: "Egg (अंडा)" },
+            { id: "ginger_garlic_paste", name: "Ginger-garlic paste (अदरक-लहसुन पेस्ट)" },
+            { id: "chili_powder", name: "Chili powder (लाल मिर्च पाउडर)" },
+            { id: "coriander_powder", name: "Coriander powder (धनिया पाउडर)" },
+            { id: "rice", name: "Rice (चावल)" },
+            { id: "curd", name: "Curd (दही)" }
+        ]
+    },
+    Tuesday: {
+        Vegetable: [
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "coconut", name: "Coconut (नारियल)" },
+            { id: "tomato", name: "Tomato (टमाटर)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger", name: "Ginger (अदरक)" },
+            { id: "lemon", name: "Lemon (नींबू)" }
+        ],
+        Grocery: [
+            { id: "chicken", name: "Chicken (चिकन)" },
+            { id: "basmati_rice", name: "Basmati rice (बासमती चावल)" },
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "curd", name: "Curd (दही)" },
+            { id: "mint", name: "Mint (पुदीना)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger_garlic_paste", name: "Ginger-garlic paste (अदरक-लहसुन पेस्ट)" },
+            { id: "biryani_masala", name: "Biryani masala/spices (बिरयानी मसाला)" },
+            { id: "oil", name: "Oil (तेल)" },
+            { id: "salt", name: "Salt (नमक)" }
+        ]
+    },
+    Wednesday: {
+        Vegetable: [
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "coconut", name: "Coconut (नारियल)" },
+            { id: "tomato", name: "Tomato (टमाटर)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger", name: "Ginger (अदरक)" },
+            { id: "lemon", name: "Lemon (नींबू)" }
+        ],
+        Grocery: [
+            { id: "fish", name: "Fish (मछली)" },
+            { id: "chili_powder", name: "Chili powder (लाल मिर्च पाउडर)" },
+            { id: "turmeric", name: "Turmeric (हल्दी)" },
+            { id: "ginger_garlic_paste", name: "Ginger-garlic paste (अदरक-लहसुन पेस्ट)" },
+            { id: "lemon", name: "Lemon (नींबू)" },
+            { id: "oil", name: "Oil (तेल)" },
+            { id: "salt", name: "Salt (नमक)" }
+        ]
+    },
+    Thursday: {
+        Vegetable: [
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "coconut", name: "Coconut (नारियल)" },
+            { id: "tomato", name: "Tomato (टमाटर)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger", name: "Ginger (अदरक)" },
+            { id: "lemon", name: "Lemon (नींबू)" }
+        ],
+        Grocery: [
+            { id: "toor_dal", name: "Toor dal (अरहर दाल)" },
+            { id: "tamarind", name: "Tamarind (इमली)" },
+            { id: "sambar_powder", name: "Sambar powder (सांभर पाउडर)" },
+            { id: "mustard_seeds", name: "Mustard seeds (सरसों के दाने)" },
+            { id: "dried_red_chili", name: "Dried red chili (सूखी लाल मिर्च)" },
+            { id: "turmeric", name: "Turmeric (हल्दी)" },
+            { id: "oil", name: "Oil (तेल)" },
+            { id: "salt", name: "Salt (नमक)" },
+            { id: "rasam_powder", name: "Rasam powder (रसम पाउडर)" },
+            { id: "garlic", name: "Garlic (लहसुन)" },
+            { id: "pepper", name: "Pepper (काली मिर्च)" },
+            { id: "cumin", name: "Cumin (जीरा)" },
+            { id: "kulambu_podi", name: "Kulambu podi/spices (कुलम्बू मसाला)" },
+            { id: "fenugreek", name: "Fenugreek (मेथी दाना)" },
+            { id: "urad_dal", name: "Urad dal (उड़द दाल)" },
+            { id: "egg", name: "Egg (अंडा)" },
+            { id: "ginger_garlic_paste", name: "Ginger-garlic paste (अदरक-लहसुन पेस्ट)" },
+            { id: "chili_powder", name: "Chili powder (लाल मिर्च पाउडर)" },
+            { id: "coriander_powder", name: "Coriander powder (धनिया पाउडर)" },
+            { id: "rice", name: "Rice (चावल)" },
+            { id: "curd", name: "Curd (दही)" }
+        ]
+    },
+    Friday: {
+        Vegetable: [
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "coconut", name: "Coconut (नारियल)" },
+            { id: "tomato", name: "Tomato (टमाटर)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "coriander", name: "Coriander (धनिया पत्ता)" },
+            { id: "ginger", name: "Ginger (अदरक)" },
+            { id: "lemon", name: "Lemon (नींबू)" }
+        ],
+        Grocery: [
+            { id: "toor_moong_dal", name: "Toor dal / moong dal (अरहर दाल / मूंग दाल)" },
+            { id: "onion", name: "Onion (प्याज़)" },
+            { id: "green_chili", name: "Green chili (हरी मिर्च)" },
+            { id: "curry_leaves", name: "Curry leaves (कड़ी पत्ता)" },
+            { id: "mustard_seeds", name: "Mustard (सरसों के दाने)" },
+            { id: "cumin", name: "Cumin (जीरा)" },
+            { id: "oil", name: "Oil (तेल)" },
+            { id: "salt", name: "Salt (नमक)" },
+            { id: "rasam_powder", name: "Rasam powder (रसम पाउडर)" },
+            { id: "garlic", name: "Garlic (लहसुन)" },
+            { id: "pepper", name: "Pepper (काली मिर्च)" },
+            { id: "cumin", name: "Cumin (जीरा)" },
+            { id: "kulambu_podi", name: "Kulambu podi/spices (कुलम्बू मसाला)" },
+            { id: "fenugreek", name: "Fenugreek (मेथी दाना)" },
+            { id: "urad_dal", name: "Urad dal (उड़द दाल)" },
+            { id: "egg", name: "Egg (अंडा)" },
+            { id: "ginger_garlic_paste", name: "Ginger-garlic paste (अदरक-लहसुन पेस्ट)" },
+            { id: "chili_powder", name: "Chili powder (लाल मिर्च पाउडर)" },
+            { id: "coriander_powder", name: "Coriander powder (धनिया पाउडर)" },
+            { id: "rice", name: "Rice (चावल)" },
+            { id: "curd", name: "Curd (दही)" }
+        ]
+    }
+};
+
+/* =========================
+   Local selection storage:
+   stores quantities per day in localStorage under key: 'menuSelections'
+   Structure:
+   {
+     Monday: { "toor_dal": "2kg", "sambar_powder": "250g", ... },
+     Tuesday: { ... }
+   }
+   ========================= */
+
+const STORAGE_KEY = 'menuSelections_v1';
+let selections = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+
+// Ensure every day has an object
+for (const day of Object.keys(MENU_LIST)) {
+    if (!selections[day]) selections[day] = {};
+}
+
+/* -------------------------
+   UI initialization
+   ------------------------- */
+
+const daySelectEl = document.getElementById('daySelect');
+const typeSelect = document.getElementById('typeSelect');
+const menuAreaEl = document.getElementById('menuArea');
+const outputListEl = document.getElementById('outputList');
+
+function init() {
+    // populate day select
+    Object.keys(DAY_ITEMS).forEach(day => {
+        const opt = document.createElement('option');
+        opt.value = day;
+        opt.textContent = day;
+        daySelectEl.appendChild(opt);
+    });
+
+    // default to first day
+    daySelectEl.value = Object.keys(DAY_ITEMS)[0];
+    typeSelect.value = 'Vegetable';
+    renderDayType(daySelectEl.value, typeSelect.value);
+}
+
+function onDayChange() {
+    renderDayType(daySelectEl.value, typeSelect.value);
+}
+
+function onTypeChange() {
+    renderDayType(daySelectEl.value, typeSelect.value);
+}
+
+function renderDayType(day, type) {
+    menuAreaEl.innerHTML = '';
+    const items = DAY_ITEMS[day] && DAY_ITEMS[day][type] ? DAY_ITEMS[day][type] : [];
+    if (!items.length) {
+        menuAreaEl.innerHTML = `<div class='text-gray-500'>No items for this selection.</div>`;
+        return;
+    }
+    items.forEach(item => {
+        const ingRow = document.createElement('div');
+        ingRow.className = "flex items-center justify-between gap-3";
+        ingRow.innerHTML = `<div class='text-sm font-medium text-gray-800'>${item.name}</div><input type='text' class='ingredient-input px-2 py-1 border rounded' placeholder='Qty' data-id='${item.id}' value='${selections[day] && selections[day][item.id] ? selections[day][item.id] : ''}' onchange='selections["${day}"]["${item.id}"]=this.value;saveSelections();'>`;
+        menuAreaEl.appendChild(ingRow);
+    });
+}
+
+// Update init and onDayChange to use type
+function init() {
+    Object.keys(DAY_ITEMS).forEach(day => {
+        const opt = document.createElement('option');
+        opt.value = day;
+        opt.textContent = day;
+        daySelectEl.appendChild(opt);
+    });
+    daySelectEl.value = Object.keys(DAY_ITEMS)[0];
+    typeSelect.value = 'Vegetable';
+    renderDayType(daySelectEl.value, typeSelect.value);
+}
+function onDayChange() {
+    renderDayType(daySelectEl.value, typeSelect.value);
+}
+
+/* -------------------------
+   Generate / Reset / Send
+   ------------------------- */
+
+function generateList() {
+    const day = daySelectEl.value;
+    const type = typeSelect.value;
+    const daySelections = selections[day] || {};
+    let output = `${day} Shopping List:\n\n`;
+    let count = 0;
+
+    // Get items for selected day and type
+    const items = DAY_ITEMS[day] && DAY_ITEMS[day][type] ? DAY_ITEMS[day][type] : [];
+    items.forEach(item => {
+        const q = daySelections[item.id];
+        if (q && q.trim() !== '') {
+            output += `${item.name} : ${q}\n`;
+            count++;
+        }
+    });
+
+    if (count === 0) {
+        output = `No quantities entered for ${day}. Please type quantities next to items and click Generate List.`;
+    }
+
+    outputListEl.value = output;
+    showModal("List generated. You can now send it via WhatsApp or copy.");
+}
+
+function resetDayInputs() {
+    const day = daySelectEl.value;
+    // clear selections for this day
+    selections[day] = {};
+    saveSelections();
+    renderDayType(day, typeSelect.value); // fix: use renderDayType to refresh inputs
+    outputListEl.value = '';
+    showModal(`${day} list has been reset.`); // fix: update modal message
+}
+
+function sendList() {
+    const text = outputListEl.value.trim();
+    if (!text || text.startsWith('No quantities')) {
+        showModal('Please generate the list first (enter quantities and click Generate List).');
+        return;
+    }
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+}
+
+function copyOutput() {
+    const text = outputListEl.value;
+    if (!text) {
+        showModal('Nothing to copy. Generate a list first.');
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        showModal('Copied to clipboard!');
+    }).catch(() => {
+        showModal('Copy failed — please copy manually.');
+    });
+}
+
+/* Modal helpers */
+function showModal(message) {
+    document.getElementById('modalMessage').textContent = message;
+    document.getElementById('messageModal').style.display = 'flex';
+}
+function hideModal() {
+    document.getElementById('messageModal').style.display = 'none';
+}
+
+/* initialize */
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+});
+</script>
+</body>
+</html>
